@@ -4,6 +4,13 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+/* File descriptor for system calls. */
+struct file_desc
+{
+  int fd;
+  struct file *file;
+  struct list_elem elem; 
+};
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -94,7 +101,10 @@ struct thread
     /* For Advanced Scheduler Proj. */
     int nice;   /*The niceness value of multilevel feedback queue*/
     int recent_cpu;  /*The recent cpu is an estimate of the CPU time the thread has used recently */
-
+    
+    /* For system call. */
+    struct list fd_list;
+    
     /* Owned by thread.c. */
     tid_t tid;                          /* Thread identifier. */
     enum thread_status status;          /* Thread state. */
