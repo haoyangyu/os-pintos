@@ -8,7 +8,5 @@ int process_wait (tid_t);
 void process_exit (void);
 void process_activate (void);
 
-//haoyang
-//yaq...
-
+//solve conflict
 #endif /* userprog/process.h */
