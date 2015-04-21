@@ -4,8 +4,6 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-#include "synch.h"
-
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -84,6 +82,19 @@ typedef int tid_t;
    blocked state is on a semaphore wait list. */
 struct thread
   {
+    /* For Alarm Clock Proj. */
+    int64_t sleep_ticks;                /* Ticks a thread sleeps, used for timer_sleep(). */ 
+
+    /* For Priority Scheduling Proj. */
+    int initial_priority;		/* Inital priority before donation. */
+    bool donated;			/* Check a thread's priority is donated or not. */
+    struct list locks;       	  	/* A list for locks, which is sorted in descending order by the highest thread priority in its semaphore's waiters list, keep track of all locks a thread holds. */
+    struct lock *wait_on_lock;	        /* The lock that the thread is waiting on. */ 
+
+    /* For Advanced Scheduler Proj. */
+    int nice;   /*The niceness value of multilevel feedback queue*/
+    int recent_cpu;  /*The recent cpu is an estimate of the CPU time the thread has used recently */
+
     /* Owned by thread.c. */
     tid_t tid;                          /* Thread identifier. */
     enum thread_status status;          /* Thread state. */
@@ -91,9 +102,6 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
-    struct semaphore sleep_Sem;         /* Semaphore to wait while sleeping. MRM */
-    int64_t endTicks;                   /* Set by the timer, the time to wake up. MRM */
-    struct list_elem sleepElem;           /* List element for timer.c MRM */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -131,6 +139,8 @@ const char *thread_name (void);
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
 
+void thread_sleep(int64_t ticks);
+
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
@@ -143,4 +153,37 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
+/* For Alarm Clock Proj. */
+bool compare_sleep_ticks (const struct list_elem *a,
+			  const struct list_elem *b,
+			  void *aux);  
+
+bool compare_thread_priority (const struct list_elem *a,
+		              const struct list_elem *b,
+		              void *aux);  
+
+/* For Priority Scheduling Proj. */
+#define FAKE_PRIORITY -1
+#define MAX_LOCK_LEVEL 8
+
+void thread_yield_current (struct thread *cur);
+
+void thread_given_priority(struct thread *cur, int new_priority, bool is_donated);
+
+void thread_wake_up(void);
+
+/* For Advanced Scheduling Proj*/
+int get_number_of_ready_threads(void);
+
+void update_priority_value_thread_mlfqs(struct thread *t, void *aux);
+
+void update_recent_cpu_value_thread_mlfqs(struct thread *t, void *aux);
+
+void update_BSD_value_thread_mlfqs(void);
+
+void thread_priority_preemption_test(void);
+
+void before_schedule_update_priority(void);
+
+void increase_recent_cpu_value_thread_mlfqs(struct thread *t, void *aux);
 #endif /* threads/thread.h */
