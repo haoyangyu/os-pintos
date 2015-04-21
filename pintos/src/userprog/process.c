@@ -18,8 +18,11 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+#include "threads/synch.h"
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static struct semaphore lock;
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -38,8 +41,18 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  //Get just the file name, except the arguments
+  char * unused;
+  //const char *file_name should be modifiable 
+  file_name = strtok_r((char*)file_name," ", &unused);
+
+  //Need to make the execution in order, because the new thread may be scheduled before this funciton returns.
+  sema_init(&lock, 1);
+  sema_down(&lock);
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  sema_up(&lock);
+  
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
