@@ -11,6 +11,7 @@
 #include "userprog/pagedir.h"
 #include "userprog/syscall.h"
 
+static struct lock file_lock;    /* Lock for file system access. */
 
 static void syscall_handler (struct intr_frame *);
 
@@ -99,6 +100,262 @@ wait (pid_t pid)
   return process_wait (pid);
 }
 
+bool
+create(const char *file, unsigned initial_size)
+{
+  if ( not_valid(file))
+    exit (-1);
+  
+  bool result = filesys_create (file, initial_size);
+  return result;
+}
+
+bool
+remove (const char *file)
+{
+  if ( not_valid (file))
+    exit (-1);
+  
+  bool result = false;
+
+  /* In case the file is opened. First check its existence. */
+  struct file *f = filesys_open (file);
+  if (f)
+  {
+    file_close (f);
+    result = filesys_remove (file);
+  }
+  
+  return result;
+}
+
+int 
+open (const char *file)
+{
+  if ( not_valid (file))
+    exit (-1);
+  
+  int prev_fd;
+  struct file *f;
+  struct file_desc *new_fd;
+  struct list_elem *e;
+
+  lock_acquire (&file_lock);
+
+  f = filesys_open (file);
+  if (f == NULL)
+    return -1;
+
+  struct list* fd_list = &thread_current()->fd_list;
+  
+  new_fd = malloc (sizeof (struct file_desc));
+  if (new_fd == NULL)
+  {
+    file_close (f);
+    return -1;
+  }
+
+  if (list_empty (fd_list))
+    last_fd = 1;
+  else
+  {
+    e = list_begin (fd_list);
+    last_fd = list_entry (e, struct file_desc, elem)->fd;
+  }
+  
+  new_fd->fd = last_fd + 1;
+  new_fd->file = f;
+  list_push_front (fd_list, &new_fd->elem);
+  lock_release (&file_lock);
+
+  return new_fd->fd;
+}
+
+int
+filesize (int fd)
+{
+  struct file_desc *file_d;
+  struct list *fd_list;
+  struct list_elem *e;
+  int size = -1;
+
+  lock_acquire (&file_lock);
+
+  fd_list = &thread_current()->fd_list;
+  e = list_tail (&fd_list);
+  while (list_prev (e) != list_head (&fd_list))
+  {
+    file_d = list_entry (e, struct file_desc, elem);
+    if (file_d->fd == fd)
+    {
+      size = file_length (file_d->file);
+      break;
+    }
+  }
+
+  lock_release (&file_lock);
+  return size;
+}
+
+int 
+read (int fd, void *buffer, unsigned size)
+{
+  int count = 0;
+  
+  /* Read from keyboard. */
+  if (fd == STDIN_FILENO)
+    {
+      uint8_t* loc_buffer = (uint8_t *) buffer;
+      while (count < size)
+        {
+          loc_buffer[i] = input_getc();
+          count++;
+        }
+      return count;
+    }
+
+  /* Read from file. */
+  if ( not_valid(buffer))
+    exit(-1);
+
+  struct file_desc *file_d;
+  struct list *fd_list;
+  struct list_elem *e;
+
+  lock_acquire (&file_lock);
+
+  fd_list = &thread_current()->fd_list;
+  e = list_tail (&fd_list);
+  while (list_prev (e) != list_head (&fd_list))
+  {
+    file_d = list_entry (e, struct file_desc, elem);
+    if (file_d->fd == fd)
+    {
+      count = file_read (file_d->file, buffer, size);
+      break;
+    }
+  }
+
+  lock_release (&file_lock);
+
+  return count;
+}
+
+int 
+write (int fd, const void *buffer, unsigned size)
+{
+  int count = 0;
+
+  /* Write to the console. */
+  if (fd == STDOUT_FILENO)
+  {
+    putbuf (buffer, size);
+    /* putbuf has no return, return size. */
+    return size;
+  }
+
+  if ( not_valid(buffer))
+    exit(-1);
+
+  /* Write to a file. */
+  struct file_desc *file_d;
+  struct list *fd_list;
+  struct list_elem *e;
+
+  lock_acquire (&file_lock);
+
+  fd_list = &thread_current()->fd_list;
+  e = list_tail (&fd_list);
+  while (list_prev (e) != list_head (&fd_list))
+  {
+    file_d = list_entry (e, struct file_desc, elem);
+    if (file_d->fd == fd)
+    {
+      count = file_write (file_d->file, buffer, size); 
+      break;   
+    }
+  }
+
+  lock_release (&file_lock);
+
+  return count;
+}
+
+void 
+seek (int fd, unsigned position)
+{
+  struct file_desc *file_d;
+  struct list *fd_list;
+  struct list_elem *e;
+
+  lock_acquire (&file_lock);
+
+  fd_list = &thread_current()->fd_list;
+  e = list_tail (&fd_list);
+  while (list_prev (e) != list_head (&fd_list))
+  {
+    file_d = list_entry (e, struct file_desc, elem);
+    if (file_d->fd == fd)
+    {
+      file_seek (file_d->file, position); 
+      break;   
+    }
+  }
+
+  lock_release (&file_lock);
+}
+
+unsigned 
+tell (int fd)
+{
+  unsigned pos = 0;
+  struct file_desc *file_d;
+  struct list *fd_list;
+  struct list_elem *e;
+
+  lock_acquire (&file_lock);
+
+  fd_list = &thread_current()->fd_list;
+  e = list_tail (&fd_list);
+  while (list_prev (e) != list_head (&fd_list))
+  {
+    file_d = list_entry (e, struct file_desc, elem);
+    if (file_d->fd == fd)
+    {
+      pos = file_tell (file_d->file); 
+      break;   
+    }
+  }
+
+  lock_release (&file_lock);
+}
+
+void 
+close (int fd)
+{
+  struct file_desc *file_d;
+  struct list *fd_list;
+  struct list_elem *e;
+
+  lock_acquire (&file_lock);
+
+  fd_list = &thread_current()->fd_list;
+  e = list_tail (&fd_list);
+  while (list_prev (e) != list_head (&fd_list))
+  {
+    file_d = list_entry (e, struct file_desc, elem);
+    if (file_d->fd == fd)
+    {
+      file_close (file_d->file);
+      list_remove (e);
+      free (file_d); 
+      break;   
+    }
+  }
+
+  lock_release (&file_lock);
+}
+
 static void
 syscall_handler (struct intr_frame *f /* UNUSED */) 
 {
@@ -123,22 +380,31 @@ syscall_handler (struct intr_frame *f /* UNUSED */)
       f->eax = wait(*(pointer+1));
       break;
     case SYS_CREATE:
+      f->eax = create((char *)(*(pointer+1)), *(pointer+2));
       break;
     case SYS_REMOVE:
+      f->eax = remove((char *)(*(pointer+1)));
       break;
     case SYS_OPEN:
+      f->eax = open ((char *)(*(pointer+1)));
       break;
     case SYS_FILESIZE:
+      f->eax = filesize(*(pointer+1));
       break;
     case SYS_READ: 
+      f->eax = read((char *)(*(pointer+1)), (void *)(*(pointer+2)), *(pointer+3));
       break;
     case SYS_WRITE:
+      f->eax = write((char *)(*(pointer+1)), (void *)(*(pointer+2)), *(pointer+3));
       break;
     case SYS_TELL:
+      f->eax = tell(*(pointer+1));
       break;
     case SYS_SEEK:
+      f->eax = seek(*(pointer+1), *(pointer+2));
       break;
     case SYS_CLOSE:
+      f->eax = close(*(pointer+1));
       break;
     default:
       break;  
