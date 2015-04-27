@@ -4,6 +4,21 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
+/* File descriptor for system calls. */
+struct file_desc
+{
+  int fd;
+  struct file *file;
+  struct list_elem elem; 
+};
+
+enum loading_status
+  {
+     SUCCESS,     
+     FAIL,
+     UNLOADED
+  };
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -17,6 +32,7 @@ enum thread_status
 /* Thread identifier type.
    You can redefine this to whatever type you like. */
 typedef int tid_t;
+typedef int pid_t;
 #define TID_ERROR ((tid_t) -1)          /* Error value for tid_t. */
 
 /* Thread priorities. */
@@ -91,6 +107,13 @@ struct thread
     struct list locks;       	  	/* A list for locks, which is sorted in descending order by the highest thread priority in its semaphore's waiters list, keep track of all locks a thread holds. */
     struct lock *wait_on_lock;	        /* The lock that the thread is waiting on. */ 
 
+    /* For Advanced Scheduler Proj. */
+    int nice;   /*The niceness value of multilevel feedback queue*/
+    int recent_cpu;  /*The recent cpu is an estimate of the CPU time the thread has used recently */
+    
+    /* For system call. */
+    struct list fd_list;
+    
     /* Owned by thread.c. */
     tid_t tid;                          /* Thread identifier. */
     enum thread_status status;          /* Thread state. */
@@ -102,15 +125,35 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
+    /* For Process Termination Messages. */
+    int return_value;
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
+
+    tid_t parent;
+
+    enum loading_status loading;
+
+    struct lock child_process_lock;
+
+    struct list children;
+
 #endif
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
 
+struct child_process
+  {
+    bool waited;
+    bool exited;
+    int exit_status;
+    tid_t child_id;
+    struct list_elem elem;
+  };
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
@@ -168,7 +211,20 @@ void thread_given_priority(struct thread *cur, int new_priority, bool is_donated
 
 void thread_wake_up(void);
 
+/* For Advanced Scheduling Proj*/
+int get_number_of_ready_threads(void);
 
-/* Written as compare functions in lib/kernel/list.h. */
+void update_priority_value_thread_mlfqs(struct thread *t, void *aux);
 
+void update_recent_cpu_value_thread_mlfqs(struct thread *t, void *aux);
+
+void update_BSD_value_thread_mlfqs(void);
+
+void thread_priority_preemption_test(void);
+
+void before_schedule_update_priority(void);
+
+void increase_recent_cpu_value_thread_mlfqs(struct thread *t, void *aux);
+/* For System Call Proj */
+struct thread *get_thread(tid_t tid);
 #endif /* threads/thread.h */
