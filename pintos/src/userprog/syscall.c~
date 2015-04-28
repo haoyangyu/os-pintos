@@ -1,0 +1,149 @@
+#include <stdio.h>
+#include <syscall-nr.h>
+#include "devices/shutdown.h"
+#include "devices/input.h"
+#include "filesys/filesys.h"
+#include "filesys/file.h"
+#include "threads/malloc.h"
+#include "threads/interrupt.h"
+#include "threads/vaddr.h"
+#include "threads/thread.h"
+#include "userprog/pagedir.h"
+#include "userprog/syscall.h"
+
+
+static void syscall_handler (struct intr_frame *);
+
+struct child_process *get_child_process_by_id(tid_t pid);
+
+void modify_child_process(struct thread *parent, tid_t pid, int status);
+
+struct child_process *get_child_process_by_id(tid_t pid)
+{
+  struct thread *current=thread_current();
+  struct list_elem *e;
+  for (e = list_tail(&current->children); e != list_head(&current->children); e = list_prev(e))
+  {
+    struct child_process *child = list_entry(e, struct child_process, elem);
+    if (child->child_id == pid)
+      return child;
+  }  
+  return NULL;
+}
+
+void modify_child_process(struct thread *parent, tid_t pid, int status)
+{
+  struct list_elem *e;
+  for (e = list_tail(&parent->children); e != list_head(&parent->children); e = list_prev(e))
+  {
+    struct child_process *child = list_entry(e, struct child_process, elem);
+    if (child->child_id == pid) 
+    {
+      lock_acquire(&parent->child_process_lock);
+      child->exited = true;
+      child->exit_status = status;
+      lock_release(&parent->child_process_lock);
+      break;
+    }
+  }  
+  return;
+}
+
+void
+syscall_init (void) 
+{
+  intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+}
+
+bool not_valid(const void *pointer)
+{
+  if (!is_user_vaddr(pointer) || pagedir_get_page(thread_current()->pagedir,pointer) == NULL || pointer == NULL) 
+    return true; 
+  else 
+    return false;
+}
+void 
+halt (void)
+{
+  shutdown_power_off();
+}
+
+
+void 
+exit (int status)
+{
+  struct thread *current = thread_current(); 	
+  printf("%s: exit(%d)\n", current->name, status);
+  struct thread *parent = get_thread(current->parent);
+  if (parent != NULL) modify_child_process(parent,current->tid,status);
+  thread_exit ();
+}
+
+pid_t exec (const char *cmd_line)
+{
+  if (not_valid(cmd_line))
+  {
+    exit(-1);
+  }
+  struct thread *current = thread_current ();
+  tid_t tid = process_execute (cmd_line);
+  lock_acquire (&current->child_process_lock);
+  while (current->loading != SUCCESS && current->loading != FAIL) barrier();
+  lock_release (&current->child_process_lock);
+  if (current->loading == FAIL) return -1; else return tid;
+}
+
+int 
+wait (pid_t pid)
+{
+  return process_wait (pid);
+}
+
+static void
+syscall_handler (struct intr_frame *f /* UNUSED */) 
+{
+  uint32_t *pointer = f->esp;
+  if (not_valid(pointer)) 
+  {
+    exit(-1);
+    return;
+  }
+  switch (*pointer) 
+  {
+    case SYS_HALT:
+      halt();
+      break;
+    case SYS_EXIT:
+      exit(*(pointer+1));
+      break;
+    case SYS_EXEC:
+      f->eax = exec((char *)(*(pointer+1)));
+      break;
+    case SYS_WAIT:
+      f->eax = wait(*(pointer+1));
+      break;
+    case SYS_CREATE:
+      break;
+    case SYS_REMOVE:
+      break;
+    case SYS_OPEN:
+      break;
+    case SYS_FILESIZE:
+      break;
+    case SYS_READ: 
+      break;
+    case SYS_WRITE:
+      break;
+    case SYS_TELL:
+      break;
+    case SYS_SEEK:
+      break;
+    case SYS_CLOSE:
+      break;
+    default:
+      break;  
+  }  
+  thread_exit ();
+}
+
+
