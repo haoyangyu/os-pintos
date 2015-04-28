@@ -42,15 +42,16 @@ process_execute (const char *file_name)
   strlcpy (fn_copy, file_name, PGSIZE);
 
   //Get just the file name, except the arguments
-  char * unused;
-  
+  char * file_name_exp_args = NULL;
+  char * save_ptr = NULL;
+
   //const char *file_name should be modifiable 
-  file_name = strtok_r((char*)file_name," ", &unused);
+  file_name_exp_args = strtok_r((char*)file_name," ", &save_ptr);
 
   //Need to make the execution in order, because the new thread may be scheduled before this funciton returns.
   lock_acquire(&unilock);
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (file_name_exp_args, PRI_DEFAULT, start_process, fn_copy);
   lock_release(&unilock);
   
   if (tid == TID_ERROR)
@@ -67,12 +68,18 @@ start_process (void *file_name_)
   struct intr_frame if_;
   bool success;
 
+  /*Get file name*/
+  char *file_name_exp_args=NULL;
+  char *save_ptr=NULL;
+
+  file_name_exp_args=strtok_r(file_name," ",&save_ptr);
+
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+  success = load (file_name_exp_args, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
@@ -453,7 +460,7 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
-        *esp = PHYS_BASE;
+        *esp = PHYS_BASE -12;
       else
         palloc_free_page (kpage);
     }
