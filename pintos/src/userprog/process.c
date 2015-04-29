@@ -21,10 +21,16 @@
 #include "userprog/process.h"
 
 static thread_func start_process NO_RETURN;
-static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static bool load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp);
 static struct lock unilock;
 //For argument parsing
-static void argument_tokenize (struct args_struct *args);
+static void argument_tokenize (struct args_struct *args_struct_ptr);
+//Utility function for pushing args into stack
+static bool push_byte_to_stack (uint8_t val, void **esp);
+static bool push_word_to_stack (uint32_t val, void **esp);
+//Have a function for pushing args into stack 
+static bool push_args_to_stack (struct args_struct *args_struct_ptr, void **esp);
+
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -63,17 +69,11 @@ process_execute (const char *args)
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *file_name_)
+start_process (void *args_)
 {
-  char *file_name = file_name_;
+  struct args_struct * args_struct_ptr = (struct args_struct *) args_;
   struct intr_frame if_;
   bool success;
-
-  /*Get file name*/
-  char *file_name_exp_args=NULL;
-  char *save_ptr=NULL;
-
-  file_name_exp_args=strtok_r(file_name," ",&save_ptr);
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -81,10 +81,10 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   // Implement set up stack in load function, when loading, naturally set up the stack for future use.
-  success = load (file_name_exp_args, &if_.eip, &if_.esp);
+  success = load (args_struct_ptr, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
-  palloc_free_page (file_name);
+  palloc_free_page (args_struct_ptr);
   if (!success) 
     thread_exit ();
 
@@ -240,7 +240,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp);
+static bool setup_stack (struct args_struct *args_struct_ptr, void **esp);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -251,7 +251,7 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
 bool
-load (const char *file_name, void (**eip) (void), void **esp) 
+load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp) 
 {
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
@@ -259,6 +259,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
   off_t file_ofs;
   bool success = false;
   int i;
+
+  //Get file name
+  char *file_name = args_struct_ptr->argv[0];
 
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
@@ -347,7 +350,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack (esp))
+  if (!setup_stack (args_struct_ptr,esp))
     goto done;
 
   /* Start address. */
@@ -490,24 +493,87 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   return true;
 }
 
+
+
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp) 
+setup_stack (struct args_struct *args_struct_ptr,void **esp) 
 {
   uint8_t *kpage;
   bool success = false;
-
+  /*
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-  if (kpage != NULL) 
-    {
+  if (kpage != NULL){
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
-        *esp = PHYS_BASE -12;
-      else
+      if (success){
+        *esp = PHYS_BASE;
+        push_args_to_stack(args_struct_ptr, esp);
+      }
+      else{
         palloc_free_page (kpage);
-    }
+      } 
+    }*/
+  *esp = PHYS_BASE;
+  success=push_args_to_stack(args_struct_ptr, esp);
   return success;
+}
+
+//Push the arguments into stack
+static bool 
+push_args_to_stack (struct args_struct *args_struct_ptr, void **esp){
+  unsigned argc_value = args_struct_ptr -> argc;
+  char ** arg_variable = args_struct_ptr -> argv;
+
+//For old C declaration
+  int i;
+  int j;
+
+  //Place arguments into the stack
+  //Reverse access the arguments stored in argv
+  for (i = argc_value - 1; i >= 0; --i){
+    //Get length of each argument
+      size_t length = strlen (arg_variable[i]);
+      for (j = length; j >= 0; j--){
+        push_byte_to_stack ((uint8_t) arg_variable[i][j], esp);
+      }
+      //Update the each argument starting address
+      arg_variable[i] = *esp;
+    }
+
+  //Word-align esp.
+  for (i = (uintptr_t) *esp % sizeof (uint32_t); i > 0; i--){
+    push_byte_to_stack (NULL, esp);
+  }
+
+  //Place the pointers to arguments into the stack 
+  for (i = argc_value - 1; i >= 0; --i){
+    push_word_to_stack ((uint32_t) arg_variable[i], esp);
+  }
+  arg_variable = *esp;
+
+  // Place argv, argc and dummy return pointer into stack
+  return push_word_to_stack ((uint32_t) arg_variable, esp)
+         && push_word_to_stack ((uint32_t) argc_value, esp)
+         && push_word_to_stack (NULL, esp);
+
+}
+/* Push a byte of data onto the stack. */
+static bool
+push_byte_to_stack (uint8_t val, void **esp)
+{
+  *esp -= sizeof(uint8_t);
+  *((uint8_t *) (*esp)) = val;
+  return true;
+}
+
+/* Push a word of data onto the stack. */
+static bool
+push_word_to_stack (uint32_t val, void **esp)
+{
+  *esp -= sizeof(uint32_t);
+  *((uint32_t *) (*esp)) = val;
+  return true;
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel
