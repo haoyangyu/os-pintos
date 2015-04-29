@@ -54,6 +54,7 @@ void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+  lock_init (&file_lock);
 }
 
 bool not_valid(const void *pointer)
@@ -186,7 +187,7 @@ filesize (int fd)
 
   fd_list = &thread_current()->fd_list;
   e = list_tail (&fd_list);
-  while (list_prev (e) != list_head (&fd_list))
+  while (e != list_head (&fd_list))
   {
     file_d = list_entry (e, struct file_desc, elem);
     if (file_d->fd == fd)
@@ -194,6 +195,7 @@ filesize (int fd)
       size = file_length (file_d->file);
       break;
     }
+    e = list_prev (e);
   }
 
   lock_release (&file_lock);
@@ -231,7 +233,7 @@ read (int fd, void *buffer, unsigned size)
 
   fd_list = &thread_current()->fd_list;
   e = list_tail (&fd_list);
-  while (list_prev (e) != list_head (&fd_list))
+  while (e != list_head (&fd_list))
   {
     file_d = list_entry (e, struct file_desc, elem);
     if (file_d->fd == fd)
@@ -239,6 +241,7 @@ read (int fd, void *buffer, unsigned size)
       count = file_read (file_d->file, buffer, size);
       break;
     }
+    e = list_prev (e);
   }
 
   lock_release (&file_lock);
@@ -271,7 +274,7 @@ write (int fd, const void *buffer, unsigned size)
 
   fd_list = &thread_current()->fd_list;
   e = list_tail (&fd_list);
-  while (list_prev (e) != list_head (&fd_list))
+  while (e != list_head (&fd_list))
   {
     file_d = list_entry (e, struct file_desc, elem);
     if (file_d->fd == fd)
@@ -279,6 +282,7 @@ write (int fd, const void *buffer, unsigned size)
       count = file_write (file_d->file, buffer, size); 
       break;   
     }
+    e = list_prev (e);
   }
 
   lock_release (&file_lock);
@@ -297,7 +301,7 @@ seek (int fd, unsigned position)
 
   fd_list = &thread_current()->fd_list;
   e = list_tail (&fd_list);
-  while (list_prev (e) != list_head (&fd_list))
+  while ( e != list_head (&fd_list))
   {
     file_d = list_entry (e, struct file_desc, elem);
     if (file_d->fd == fd)
@@ -305,6 +309,7 @@ seek (int fd, unsigned position)
       file_seek (file_d->file, position); 
       break;   
     }
+    e = list_prev (e);
   }
 
   lock_release (&file_lock);
@@ -322,7 +327,7 @@ tell (int fd)
 
   fd_list = &thread_current()->fd_list;
   e = list_tail (&fd_list);
-  while (list_prev (e) != list_head (&fd_list))
+  while ( e != list_head (&fd_list))
   {
     file_d = list_entry (e, struct file_desc, elem);
     if (file_d->fd == fd)
@@ -330,9 +335,12 @@ tell (int fd)
       pos = file_tell (file_d->file); 
       break;   
     }
+    e = list_prev (e);
   }
 
   lock_release (&file_lock);
+
+  return pos;
 }
 
 void 
@@ -346,7 +354,7 @@ close (int fd)
 
   fd_list = &thread_current()->fd_list;
   e = list_tail (&fd_list);
-  while (list_prev (e) != list_head (&fd_list))
+  while (e != list_head (&fd_list))
   {
     file_d = list_entry (e, struct file_desc, elem);
     if (file_d->fd == fd)
@@ -356,6 +364,7 @@ close (int fd)
       free (file_d); 
       break;   
     }
+    e = list_prev (e);
   }
 
   lock_release (&file_lock);
