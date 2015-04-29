@@ -132,6 +132,9 @@ remove (const char *file)
 int 
 open (const char *file)
 {
+  //YHY: For fixing the declaration 
+  int last_fd;
+
   if ( not_valid (file))
     exit (-1);
   
@@ -201,6 +204,8 @@ int
 read (int fd, void *buffer, unsigned size)
 {
   int count = 0;
+  //YHY: fixing for delaration
+  int i=0;
   
   /* Read from keyboard. */
   if (fd == STDIN_FILENO)
@@ -401,10 +406,10 @@ syscall_handler (struct intr_frame *f /* UNUSED */)
       f->eax = tell(*(pointer+1));
       break;
     case SYS_SEEK:
-      f->eax = seek(*(pointer+1), *(pointer+2));
+     // f->eax = seek(*(pointer+1), *(pointer+2));
       break;
     case SYS_CLOSE:
-      f->eax = close(*(pointer+1));
+     // f->eax = close(*(pointer+1));
       break;
     default:
       break;  
