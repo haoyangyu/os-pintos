@@ -22,7 +22,7 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp);
-//static struct lock unilock;
+struct lock unilock;
 //For argument parsing
 static void argument_tokenize (struct args_struct *args_struct_ptr);
 //Utility function for pushing args into stack
@@ -42,8 +42,9 @@ struct lock filesys_lock;
 tid_t
 process_execute (const char *arguments) 
 {
+  //lock_init(&unilock);
   struct args_struct *args_struct_ptr;
-  tid_t tid;
+  tid_t tid = TID_ERROR;
   printf("execute!\n");
   /* Make a copy of args.
      Otherwise there's a race between the caller and load(). */
@@ -55,12 +56,19 @@ process_execute (const char *arguments)
   //Use argument_tokenize to parse the arguments
   argument_tokenize(args_struct_ptr);
   if (args_struct_ptr->argc == BAD_ARGS){
+    palloc_free_page (args_struct_ptr);
     return TID_ERROR;
   }
-
+  printf("before thread create!\n");
   //Need to make the execution in order, because the new thread may be scheduled before this funciton returns.
   //lock_acquire(&unilock);
   /* Create a new thread to execute FILE_NAME. */
+  printf("%s\n",args_struct_ptr->argv[0]);
+  struct file *file = filesys_open(args_struct_ptr->argv[0]);
+  if (file == NULL)
+    printf("no such file!\n");
+  else
+    printf("find the file!!!!\n");
   tid = thread_create (args_struct_ptr->argv[0], PRI_DEFAULT, start_process, args_struct_ptr);
   //lock_release(&unilock);
   
@@ -74,9 +82,10 @@ process_execute (const char *arguments)
 static void
 start_process (void *args_)
 {
+  printf("start!!\n");
   struct args_struct * args_struct_ptr = (struct args_struct *) args_;
   struct intr_frame if_;
-  bool success;
+  bool success = false;
   
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -164,7 +173,7 @@ process_exit (void)
       pagedir_destroy (pd);
 
       /*Print the process termination messages*/
-      //printf("%s: exit(%d)\n",cur->name,cur->return_value);
+      printf("%s: exit(%d)\n",cur->name,cur->return_value);
     }
 }
 
@@ -271,12 +280,13 @@ load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp)
 
   //Get file name
   char *file_name = args_struct_ptr->argv[0];
-
+  printf("file name: %s\n",file_name);
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
     return success;
   process_activate ();
+
   printf("before open executable file!\n");
   /* Open executable file. */
   lock_acquire (&filesys_lock);

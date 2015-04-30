@@ -78,7 +78,7 @@ void
 exit (int status)
 {
   struct thread *current = thread_current(); 	
-  //printf("%s: exit(%d)\n", current->name, status);
+  printf("%s: exit(%d)\n", current->name, status);
   //struct thread *parent = get_thread(current->parent);
   //if (parent != NULL) modify_child_process(parent,current->tid,status);
   thread_exit ();
