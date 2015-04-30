@@ -32,8 +32,8 @@ static bool push_word_to_stack (uint32_t val, void **esp);
 static bool push_args_to_stack (struct args_struct *args_struct_ptr, void **esp);
 //Set the USER_STACK_VADDR as the address of the baseline address of the valid stack
 //Set it as a constant, in running procedure, use USER_STACK_VADDR to make sure does not have stackoverflow
-const uint8_t *USER_STACK_VADDR = (uint8_t *) PHYS_BASE - PGSIZE;
-
+const uint8_t *USER_STACK_VADDR = (uint8_t *) PHYS_BASE - PGSIZE; 
+struct lock filesys_lock;
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -44,7 +44,7 @@ process_execute (const char *arguments)
 {
   struct args_struct *args_struct_ptr;
   tid_t tid;
-
+  printf("execute!\n");
   /* Make a copy of args.
      Otherwise there's a race between the caller and load(). */
   args_struct_ptr = palloc_get_page (0);
@@ -78,7 +78,7 @@ start_process (void *arguments_)
   struct args_struct * args_struct_ptr = (struct args_struct *) arguments_;
   struct intr_frame if_;
   bool success = false;
-
+  
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
@@ -113,7 +113,7 @@ start_process (void *arguments_)
    does nothing. */
 int
 process_wait (tid_t child_tid) 
-{
+{/*
   if (child_tid == -1) 
     return -1;
   else 
@@ -134,18 +134,22 @@ process_wait (tid_t child_tid)
     child->waited = true;
     lock_release(&current->child_process_lock);
     return status;
-  }
+  }*/
+  //printf("wait!\n");
+  return -1;
 }
 
 /* Free the current process's resources. */
 void
 process_exit (void)
 {
+  printf("exit!!!\n");
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
+
   pd = cur->pagedir;
   if (pd != NULL) 
     {
@@ -161,7 +165,7 @@ process_exit (void)
       pagedir_destroy (pd);
 
       /*Print the process termination messages*/
-      printf("%s: exit(%d)\n",cur->name,cur->return_value);
+      //printf("%s: exit(%d)\n",cur->name,cur->return_value);
     }
 }
 
@@ -257,6 +261,8 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
 bool
 load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp) 
 {
+  lock_init(&filesys_lock);
+  printf("load!!\n");
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
   struct file *file = NULL;
@@ -270,17 +276,19 @@ load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp)
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
-    goto done;
+    return success;
   process_activate ();
-
+  printf("before open executable file!\n");
   /* Open executable file. */
+  lock_acquire (&filesys_lock);
   file = filesys_open (file_name);
+  printf("filesys_open succeed!\n");
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
-
+   printf("before read and verify exeutable headers!\n");
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -293,7 +301,7 @@ load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp)
       printf ("load: %s: error loading executable\n", file_name);
       goto done; 
     }
-
+  printf("before read program headers!\n");
   /* Read program headers. */
   file_ofs = ehdr.e_phoff;
   for (i = 0; i < ehdr.e_phnum; i++) 
@@ -352,7 +360,7 @@ load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp)
           break;
         }
     }
-
+  printf("Before setup stack!!\n");
   /* Set up stack. */
   if (!setup_stack (args_struct_ptr,esp))
     goto done;
@@ -365,6 +373,8 @@ load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp)
  done:
   /* We arrive here whether the load is successful or not. */
   file_close (file);
+  lock_release (&filesys_lock);
+  printf("load complete!\n");
   return success;
 }
 
