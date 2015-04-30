@@ -186,8 +186,8 @@ filesize (int fd)
   lock_acquire (&file_lock);
 
   fd_list = &thread_current()->fd_list;
-  e = list_tail (&fd_list);
-  while (e != list_head (&fd_list))
+  for (e = list_begin (fd_list); e != list_end (fd_list); 
+       e = list_next (e))
   {
     file_d = list_entry (e, struct file_desc, elem);
     if (file_d->fd == fd)
@@ -195,7 +195,6 @@ filesize (int fd)
       size = file_length (file_d->file);
       break;
     }
-    e = list_prev (e);
   }
 
   lock_release (&file_lock);
@@ -232,8 +231,8 @@ read (int fd, void *buffer, unsigned size)
   lock_acquire (&file_lock);
 
   fd_list = &thread_current()->fd_list;
-  e = list_tail (&fd_list);
-  while (e != list_head (&fd_list))
+  for (e = list_begin (fd_list); e != list_end (fd_list); 
+       e = list_next (e))
   {
     file_d = list_entry (e, struct file_desc, elem);
     if (file_d->fd == fd)
@@ -241,7 +240,6 @@ read (int fd, void *buffer, unsigned size)
       count = file_read (file_d->file, buffer, size);
       break;
     }
-    e = list_prev (e);
   }
 
   lock_release (&file_lock);
@@ -273,8 +271,8 @@ write (int fd, const void *buffer, unsigned size)
   lock_acquire (&file_lock);
 
   fd_list = &thread_current()->fd_list;
-  e = list_tail (&fd_list);
-  while (e != list_head (&fd_list))
+  for (e = list_begin (fd_list); e != list_end (fd_list); 
+       e = list_next (e))
   {
     file_d = list_entry (e, struct file_desc, elem);
     if (file_d->fd == fd)
@@ -282,7 +280,6 @@ write (int fd, const void *buffer, unsigned size)
       count = file_write (file_d->file, buffer, size); 
       break;   
     }
-    e = list_prev (e);
   }
 
   lock_release (&file_lock);
@@ -300,8 +297,8 @@ seek (int fd, unsigned position)
   lock_acquire (&file_lock);
 
   fd_list = &thread_current()->fd_list;
-  e = list_tail (&fd_list);
-  while ( e != list_head (&fd_list))
+  for (e = list_begin (fd_list); e != list_end (fd_list); 
+       e = list_next (e))
   {
     file_d = list_entry (e, struct file_desc, elem);
     if (file_d->fd == fd)
@@ -309,7 +306,6 @@ seek (int fd, unsigned position)
       file_seek (file_d->file, position); 
       break;   
     }
-    e = list_prev (e);
   }
 
   lock_release (&file_lock);
@@ -326,8 +322,8 @@ tell (int fd)
   lock_acquire (&file_lock);
 
   fd_list = &thread_current()->fd_list;
-  e = list_tail (&fd_list);
-  while ( e != list_head (&fd_list))
+  for (e = list_begin (fd_list); e != list_end (fd_list); 
+       e = list_next (e))
   {
     file_d = list_entry (e, struct file_desc, elem);
     if (file_d->fd == fd)
@@ -335,7 +331,6 @@ tell (int fd)
       pos = file_tell (file_d->file); 
       break;   
     }
-    e = list_prev (e);
   }
 
   lock_release (&file_lock);
@@ -353,8 +348,8 @@ close (int fd)
   lock_acquire (&file_lock);
 
   fd_list = &thread_current()->fd_list;
-  e = list_tail (&fd_list);
-  while (e != list_head (&fd_list))
+  for (e = list_begin (fd_list); e != list_end (fd_list); 
+       e = list_next (e))
   {
     file_d = list_entry (e, struct file_desc, elem);
     if (file_d->fd == fd)
@@ -364,7 +359,6 @@ close (int fd)
       free (file_d); 
       break;   
     }
-    e = list_prev (e);
   }
 
   lock_release (&file_lock);
