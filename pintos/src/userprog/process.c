@@ -22,7 +22,7 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp);
-//static struct lock unilock;
+static struct lock unilock;
 //For argument parsing
 static void argument_tokenize (struct args_struct *args_struct_ptr);
 //Utility function for pushing args into stack
@@ -42,9 +42,10 @@ struct lock filesys_lock;
 tid_t
 process_execute (const char *arguments) 
 {
+  lock_init(&unilock);
   struct args_struct *args_struct_ptr;
   tid_t tid;
-  printf("execute!\n");
+  printf("process_execute_begin!\n");
   /* Make a copy of args.
      Otherwise there's a race between the caller and load(). */
   args_struct_ptr = palloc_get_page (0);
@@ -54,17 +55,20 @@ process_execute (const char *arguments)
 
   //Use argument_tokenize to parse the arguments
   argument_tokenize(args_struct_ptr);
+  printf("argument_tokenization finished!\n");
   if (args_struct_ptr->argc == BAD_ARGS){
     palloc_free_page (args_struct_ptr);
     return TID_ERROR;
   }
 
   //Need to make the execution in order, because the new thread may be scheduled before this funciton returns.
-  //lock_acquire(&unilock);
+  lock_acquire(&unilock);
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (args_struct_ptr->argv[0], PRI_DEFAULT, start_process, args_struct_ptr);
-  //lock_release(&unilock);
+  lock_release(&unilock);
   
+  printf("thread_create_finished!\n");
+
   if (tid == TID_ERROR)
     palloc_free_page (args_struct_ptr); 
   return tid;
@@ -85,6 +89,7 @@ start_process (void *arguments_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   // Implement set up stack in load function, when loading, naturally set up the stack for future use.
+  printf("start_process_begun\n");
   success = load (args_struct_ptr, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
@@ -143,7 +148,7 @@ process_wait (tid_t child_tid)
 void
 process_exit (void)
 {
-  printf("exit!!!\n");
+  printf("process_exit_begun!\n");
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
@@ -165,7 +170,7 @@ process_exit (void)
       pagedir_destroy (pd);
 
       /*Print the process termination messages*/
-      //printf("%s: exit(%d)\n",cur->name,cur->return_value);
+      printf("%s: exit(%d)\n",cur->name,cur->return_value);
     }
 }
 
@@ -262,7 +267,7 @@ bool
 load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp) 
 {
   lock_init(&filesys_lock);
-  printf("load!!\n");
+  printf("Load_Begun!\n");
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
   struct file *file = NULL;
@@ -272,7 +277,7 @@ load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp)
 
   //Get file name
   char *file_name = args_struct_ptr->argv[0];
-
+  printf("file_name_we_got: %s\n", file_name);
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
@@ -282,7 +287,7 @@ load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp)
   /* Open executable file. */
   lock_acquire (&filesys_lock);
   file = filesys_open (file_name);
-  printf("filesys_open succeed!\n");
+ 
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
