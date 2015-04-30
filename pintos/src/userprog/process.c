@@ -55,6 +55,7 @@ process_execute (const char *arguments)
   //Use argument_tokenize to parse the arguments
   argument_tokenize(args_struct_ptr);
   if (args_struct_ptr->argc == BAD_ARGS){
+    palloc_free_page (args_struct_ptr);
     return TID_ERROR;
   }
 
@@ -72,11 +73,11 @@ process_execute (const char *arguments)
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *args_)
+start_process (void *arguments_)
 {
-  struct args_struct * args_struct_ptr = (struct args_struct *) args_;
+  struct args_struct * args_struct_ptr = (struct args_struct *) arguments_;
   struct intr_frame if_;
-  bool success;
+  bool success = false;
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -87,7 +88,7 @@ start_process (void *args_)
   success = load (args_struct_ptr, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
-  palloc_free_page (args_struct_ptr);
+  //palloc_free_page (args_struct_ptr);
   if (!success) 
     thread_exit ();
 
@@ -420,11 +421,11 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
 static void argument_tokenize (struct args_struct *args_struct_ptr){
   char * save_ptr;
   char * token;
-  unsigned argc_value=0;
+  unsigned argc_value = 0;
   char ** arg_variable = args_struct_ptr->argv;
   for (token = strtok_r(args_struct_ptr->args,ARGS_DELI, &save_ptr); token != NULL; token = strtok_r (NULL, ARGS_DELI, &save_ptr)){
     arg_variable[argc_value]=token;
-    argc_value+=1;
+    argc_value +=1;
     //Check the count of the arguments cannot equal or larger than the THRESHOLD of the argument variables size
     //Return the argc_value to -1
     if(argc_value>=ARGV_SIZE){
@@ -501,8 +502,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (struct args_struct *args_struct_ptr,void **esp) 
-{
+setup_stack (struct args_struct *args_struct_ptr,void **esp){
   uint8_t *kpage;
   bool success_for_stack_page_allocation = false;
   bool success_for_setup_stack = false;
@@ -513,7 +513,7 @@ setup_stack (struct args_struct *args_struct_ptr,void **esp)
       if (success_for_stack_page_allocation){
         *esp = PHYS_BASE;
         //If the minimal stack created successfully
-        success_for_setup_stack=push_args_to_stack(args_struct_ptr, esp);
+        success_for_setup_stack= push_args_to_stack(args_struct_ptr, esp);
       }else{
         palloc_free_page (kpage);
       } 
@@ -525,8 +525,10 @@ setup_stack (struct args_struct *args_struct_ptr,void **esp)
 static bool 
 push_args_to_stack (struct args_struct *args_struct_ptr, void **esp){
   //Return the value in args_struct
-  unsigned argc_value = args_struct_ptr -> argc;
-  char ** arg_variable = args_struct_ptr -> argv;
+  unsigned argc_value;
+  argc_value = args_struct_ptr -> argc;
+  char ** arg_variable;
+  arg_variable = args_struct_ptr -> argv;
 
 //For old C declaration
   int i;
@@ -545,6 +547,7 @@ push_args_to_stack (struct args_struct *args_struct_ptr, void **esp){
       }
       //Update the each argument starting address
       arg_variable[i] = *esp;
+      //*esp = argc_value[i];
     }
 
   //Word-align esp.
@@ -580,7 +583,9 @@ push_byte_to_stack (uint8_t val, void **esp)
   return true;
 }
 
-/* Push a word of data onto the stack. */
+/* Push a word of data onto the stack.
+  In the meantime, check the esp is between USER_STACK_VADDR and PHYS_BASE or not
+ */
 static bool
 push_word_to_stack (uint32_t val, void **esp)
 {
