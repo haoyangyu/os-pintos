@@ -11,6 +11,9 @@
 #include "userprog/pagedir.h"
 #include "userprog/syscall.h"
 
+#define ARG0 (*((uint32_t *) (esp + 1)))
+#define ARG1 (*((uint32_t *) (esp + 2)))
+#define ARG2 (*((uint32_t *) (esp + 3)))
 static struct lock file_lock;    /* Lock for file system access. */
 
 static void syscall_handler (struct intr_frame *);
@@ -59,7 +62,7 @@ syscall_init (void)
 
 bool not_valid(const void *pointer)
 {
-  if (!is_user_vaddr(pointer) || pagedir_get_page(thread_current()->pagedir,pointer) == NULL || pointer == NULL) 
+  if (!is_user_vaddr(pointer) || pointer == NULL) 
     return true; 
   else 
     return false;
@@ -75,9 +78,9 @@ void
 exit (int status)
 {
   struct thread *current = thread_current(); 	
-  printf("%s: exit(%d)\n", current->name, status);
-  struct thread *parent = get_thread(current->parent);
-  if (parent != NULL) modify_child_process(parent,current->tid,status);
+  //printf("%s: exit(%d)\n", current->name, status);
+  //struct thread *parent = get_thread(current->parent);
+  //if (parent != NULL) modify_child_process(parent,current->tid,status);
   thread_exit ();
 }
 
@@ -204,7 +207,7 @@ filesize (int fd)
 int 
 read (int fd, void *buffer, unsigned size)
 {
-  if ( not_valid (buffer) || not_valid (buffer + size)
+  if (not_valid (buffer) || not_valid (buffer + size)
        || fd == STDOUT_FILENO)
     exit(-1);
 
@@ -249,8 +252,12 @@ read (int fd, void *buffer, unsigned size)
 int 
 write (int fd, const void *buffer, unsigned size)
 {
+  return 100;
+  if (not_valid (buffer) || not_valid (buffer + size)
+       || fd == STDIN_FILENO)
+    exit(-1);
   int count = 0;
-
+  printf("write!!!\n");
   /* Write to the console. */
   if (fd == STDOUT_FILENO)
   {
@@ -259,8 +266,7 @@ write (int fd, const void *buffer, unsigned size)
     return size;
   }
 
-  if ( not_valid(buffer))
-    exit(-1);
+
 
   /* Write to a file. */
   struct file_desc *file_d;
@@ -364,13 +370,72 @@ close (int fd)
 }
 
 static void
-syscall_handler (struct intr_frame *f /* UNUSED */) 
+syscall_handler (struct intr_frame *f) 
+
 {
+  printf("system handler!\n!");
+  uint32_t *esp;
+  struct thread *cur = thread_current ();
+  /* Get the stack pointer and check if valid. */
+  esp = (uint32_t *)  (f->esp);
+ // cur->esp = (uint8_t *) esp;
+
+  /* Make the syscall. */
+  switch (*esp)
+    {
+      case SYS_HALT:
+        halt ();
+        break;
+      case SYS_EXIT:
+        exit ((int) ARG0);
+        break;
+      case SYS_EXEC:
+        f->eax = exec ((const char *) ARG0);
+        break;
+      case SYS_WAIT:
+        f->eax = wait ((pid_t) ARG0);
+        break;
+      case SYS_CREATE:
+        f->eax = create ((const char *) ARG0, (unsigned) ARG1);
+        break;
+      case SYS_REMOVE:
+        f->eax = remove ((const char *) ARG0);
+        break;
+      case SYS_OPEN:
+        f->eax = open ((const char *) ARG0);
+        break;
+      case SYS_FILESIZE:
+        f->eax = filesize ((int) ARG0);
+        break;
+      case SYS_READ:
+        f->eax = read ((int) ARG0, (void *) ARG1, (unsigned) ARG2);
+        break;
+      case SYS_WRITE:
+        f->eax = write ((int) ARG0, (void *) ARG1, (unsigned) ARG2);
+        break;
+      case SYS_SEEK:
+        seek ((int) ARG0, (unsigned) ARG1);
+        break;
+      case SYS_TELL:
+        f->eax = tell ((int) ARG0);
+        break;
+      case SYS_CLOSE:
+        close ((int) ARG0);
+        break;
+      default:
+        printf ("Invalid syscall!\n");
+        //cur->proc->exit = SYSCALL_ERROR;
+        //thread_exit ();
+    }
+  thread_exit();
+  /* Clear the esp value for the thread. */
+  //cur->esp = NULL;
+/*
   uint32_t *pointer = f->esp;
+  printf("system call!\n");
   if (not_valid(pointer)) 
   {
     exit(-1);
-    return;
   }
   switch (*pointer) 
   {
@@ -399,24 +464,24 @@ syscall_handler (struct intr_frame *f /* UNUSED */)
       f->eax = filesize(*(pointer+1));
       break;
     case SYS_READ: 
-      f->eax = read((char *)(*(pointer+1)), (void *)(*(pointer+2)), *(pointer+3));
+      f->eax = read((int)(*(pointer+1)), (void *)(*(pointer+2)), (unsigned)*(pointer+3));
       break;
     case SYS_WRITE:
-      f->eax = write((char *)(*(pointer+1)), (void *)(*(pointer+2)), *(pointer+3));
+      f->eax = write((int)(*(pointer+1)), (void *)(*(pointer+2)), (unsigned)*(pointer+3));
       break;
     case SYS_TELL:
-      f->eax = tell(*(pointer+1));
+      f->eax = tell((int)*(pointer+1));
       break;
     case SYS_SEEK:
-     // f->eax = seek(*(pointer+1), *(pointer+2));
+      seek((int)*(pointer+1), (unsigned)*(pointer+2));
       break;
     case SYS_CLOSE:
-     // f->eax = close(*(pointer+1));
+      close((int) *(pointer+1));
       break;
     default:
       break;  
   }  
-  thread_exit ();
+  thread_exit ();*/
 }
 
 
