@@ -204,25 +204,24 @@ filesize (int fd)
 int 
 read (int fd, void *buffer, unsigned size)
 {
+  if ( not_valid (buffer) || not_valid (buffer + size)
+       || fd == STDOUT_FILENO)
+    exit(-1);
+
   int count = 0;
-  //YHY: fixing for delaration
-  int i=0;
   
   /* Read from keyboard. */
   if (fd == STDIN_FILENO)
     {
-      uint8_t* loc_buffer = (uint8_t *) buffer;
       while (count < size)
         {
-          loc_buffer[i] = input_getc();
+           *((uint8_t *) (buffer + count)) = input_getc ();
           count++;
         }
-      return count;
+      return size;
     }
 
   /* Read from file. */
-  if ( not_valid(buffer))
-    exit(-1);
 
   struct file_desc *file_d;
   struct list *fd_list;
