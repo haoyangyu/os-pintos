@@ -59,16 +59,16 @@ process_execute (const char *arguments)
     palloc_free_page (args_struct_ptr);
     return TID_ERROR;
   }
-  printf("before thread create!\n");
+ // printf("before thread create!\n");
   //Need to make the execution in order, because the new thread may be scheduled before this funciton returns.
   //lock_acquire(&unilock);
   /* Create a new thread to execute FILE_NAME. */
-  printf("%s\n",args_struct_ptr->argv[0]);
+ // printf("%s\n",args_struct_ptr->argv[0]);
   struct file *file = filesys_open(args_struct_ptr->argv[0]);
-  if (file == NULL)
-    printf("no such file!\n");
-  else
-    printf("find the file!!!!\n");
+ // if (file == NULL)
+ //   printf("no such file!\n");
+ // else
+  //  printf("find the file!!!!\n");
   tid = thread_create (args_struct_ptr->argv[0], PRI_DEFAULT, start_process, args_struct_ptr);
   //lock_release(&unilock);
   
@@ -82,7 +82,7 @@ process_execute (const char *arguments)
 static void
 start_process (void *args_)
 {
-  printf("start!!\n");
+  //printf("start!!\n");
   struct args_struct * args_struct_ptr = (struct args_struct *) args_;
   struct intr_frame if_;
   bool success = false;
@@ -151,7 +151,7 @@ process_wait (tid_t child_tid)
 void
 process_exit (void)
 {
-  printf("exit!!!\n");
+ // printf("exit!!!\n");
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
@@ -280,24 +280,24 @@ load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp)
 
   //Get file name
   char *file_name = args_struct_ptr->argv[0];
-  printf("file name: %s\n",file_name);
+ // printf("file name: %s\n",file_name);
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
     return success;
   process_activate ();
 
-  printf("before open executable file!\n");
+ // printf("before open executable file!\n");
   /* Open executable file. */
   lock_acquire (&filesys_lock);
   file = filesys_open (file_name);
-  printf("filesys_open succeed!\n");
+  //printf("filesys_open succeed!\n");
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
-   printf("before read and verify exeutable headers!\n");
+  // printf("before read and verify exeutable headers!\n");
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -310,7 +310,7 @@ load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp)
       printf ("load: %s: error loading executable\n", file_name);
       goto done; 
     }
-  printf("before read program headers!\n");
+ // printf("before read program headers!\n");
   /* Read program headers. */
   file_ofs = ehdr.e_phoff;
   for (i = 0; i < ehdr.e_phnum; i++) 
@@ -369,7 +369,7 @@ load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp)
           break;
         }
     }
-  printf("Before setup stack!!\n");
+  //printf("Before setup stack!!\n");
   /* Set up stack. */
   if (!setup_stack (args_struct_ptr,esp))
     goto done;
@@ -383,7 +383,7 @@ load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp)
   /* We arrive here whether the load is successful or not. */
   file_close (file);
   lock_release (&filesys_lock);
-  printf("load complete!\n");
+ // printf("load complete!\n");
   return success;
 }
 

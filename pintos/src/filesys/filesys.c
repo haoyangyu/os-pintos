@@ -70,13 +70,13 @@ filesys_open (const char *name)
   struct inode *inode = NULL;
 
   if (dir != NULL) {
-    printf("find dir!\n");
+    //printf("find dir!\n");
     //printf("%d\n",dir->pos);
     dir_lookup (dir, name, &inode);
   }
   dir_close (dir);
- if (inode == NULL)
-   printf("no inode!!\n");
+ //if (inode == NULL)
+   //printf("no inode!!\n");
   return file_open (inode);
 }
 
