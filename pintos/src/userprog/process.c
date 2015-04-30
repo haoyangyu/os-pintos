@@ -20,9 +20,9 @@
 #include "userprog/syscall.h"
 #include "userprog/process.h"
 
+
 static thread_func start_process NO_RETURN;
 static bool load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp);
-
 struct lock unilock;
 //For argument parsing
 static void argument_tokenize (struct args_struct *args_struct_ptr);
@@ -46,8 +46,7 @@ process_execute (const char *arguments)
   //lock_init(&unilock);
   struct args_struct *args_struct_ptr;
   tid_t tid = TID_ERROR;
-  printf("execute!\n");
-
+  //printf("execute!\n");
   /* Make a copy of args.
      Otherwise there's a race between the caller and load(). */
   args_struct_ptr = palloc_get_page (0);
@@ -57,14 +56,13 @@ process_execute (const char *arguments)
 
   //Use argument_tokenize to parse the arguments
   argument_tokenize(args_struct_ptr);
-  printf("argument_tokenization finished!\n");
   if (args_struct_ptr->argc == BAD_ARGS){
     palloc_free_page (args_struct_ptr);
     return TID_ERROR;
   }
  // printf("before thread create!\n");
   //Need to make the execution in order, because the new thread may be scheduled before this funciton returns.
-  lock_acquire(&unilock);
+  //lock_acquire(&unilock);
   /* Create a new thread to execute FILE_NAME. */
  // printf("%s\n",args_struct_ptr->argv[0]);
   struct file *file = filesys_open(args_struct_ptr->argv[0]);
@@ -73,10 +71,8 @@ process_execute (const char *arguments)
  // else
   //  printf("find the file!!!!\n");
   tid = thread_create (args_struct_ptr->argv[0], PRI_DEFAULT, start_process, args_struct_ptr);
-  lock_release(&unilock);
+  //lock_release(&unilock);
   
-  printf("thread_create_finished!\n");
-
   if (tid == TID_ERROR)
     palloc_free_page (args_struct_ptr); 
   return tid;
@@ -85,10 +81,10 @@ process_execute (const char *arguments)
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *arguments_)
+start_process (void *args_)
 {
-  struct args_struct * args_struct_ptr = (struct args_struct *) arguments_;
-
+  //printf("start!!\n");
+  struct args_struct * args_struct_ptr = (struct args_struct *) args_;
   struct intr_frame if_;
   bool success = false;
   
@@ -98,11 +94,10 @@ start_process (void *arguments_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   // Implement set up stack in load function, when loading, naturally set up the stack for future use.
-  printf("start_process_begun\n");
   success = load (args_struct_ptr, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
-  //palloc_free_page (args_struct_ptr);
+  palloc_free_page (args_struct_ptr);
   if (!success) 
     thread_exit ();
 
@@ -157,9 +152,7 @@ process_wait (tid_t child_tid)
 void
 process_exit (void)
 {
-
  // printf("exit!!!\n");
-
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
@@ -278,7 +271,7 @@ bool
 load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp) 
 {
   lock_init(&filesys_lock);
-  printf("Load_Begun!\n");
+  printf("load!!\n");
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
   struct file *file = NULL;
@@ -288,9 +281,7 @@ load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp)
 
   //Get file name
   char *file_name = args_struct_ptr->argv[0];
-
  // printf("file name: %s\n",file_name);
-
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
@@ -301,7 +292,7 @@ load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp)
   /* Open executable file. */
   lock_acquire (&filesys_lock);
   file = filesys_open (file_name);
-
+  //printf("filesys_open succeed!\n");
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
@@ -450,21 +441,25 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
 static void argument_tokenize (struct args_struct *args_struct_ptr){
   char * save_ptr;
   char * token;
-  unsigned argc_value = 0;
+  unsigned argc_value=0;
   char ** arg_variable = args_struct_ptr->argv;
   for (token = strtok_r(args_struct_ptr->args,ARGS_DELI, &save_ptr); token != NULL; token = strtok_r (NULL, ARGS_DELI, &save_ptr)){
-    arg_variable[argc_value]=token;
-    argc_value +=1;
+     printf("%s\n",token);
     //Check the count of the arguments cannot equal or larger than the THRESHOLD of the argument variables size
     //Return the argc_value to -1
-    if(argc_value>=ARGV_SIZE){
+    if(argc_value==ARGV_SIZE){
       printf("Enter too many arguments\n");
       argc_value = BAD_ARGS;
       break;
     }
+    arg_variable[argc_value++]=token;
+   
+    
   }
+  printf("%d\n",argc_value);
   //Return the argc with the arguments number, or -1 if the arguments are too many 
   args_struct_ptr->argc = argc_value;
+  
 }
 
 /* Loads a segment starting at offset OFS in FILE at address
@@ -531,7 +526,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (struct args_struct *args_struct_ptr,void **esp){
+setup_stack (struct args_struct *args_struct_ptr,void **esp) 
+{
   uint8_t *kpage;
   bool success_for_stack_page_allocation = false;
   bool success_for_setup_stack = false;
@@ -542,7 +538,7 @@ setup_stack (struct args_struct *args_struct_ptr,void **esp){
       if (success_for_stack_page_allocation){
         *esp = PHYS_BASE;
         //If the minimal stack created successfully
-        success_for_setup_stack= push_args_to_stack(args_struct_ptr, esp);
+        success_for_setup_stack=push_args_to_stack(args_struct_ptr, esp);
       }else{
         palloc_free_page (kpage);
       } 
@@ -554,10 +550,8 @@ setup_stack (struct args_struct *args_struct_ptr,void **esp){
 static bool 
 push_args_to_stack (struct args_struct *args_struct_ptr, void **esp){
   //Return the value in args_struct
-  unsigned argc_value;
-  argc_value = args_struct_ptr -> argc;
-  char ** arg_variable;
-  arg_variable = args_struct_ptr -> argv;
+  unsigned argc_value = args_struct_ptr -> argc;
+  char ** arg_variable = args_struct_ptr -> argv;
 
 //For old C declaration
   int i;
@@ -576,7 +570,6 @@ push_args_to_stack (struct args_struct *args_struct_ptr, void **esp){
       }
       //Update the each argument starting address
       arg_variable[i] = *esp;
-      //*esp = argc_value[i];
     }
 
   //Word-align esp.
@@ -612,9 +605,7 @@ push_byte_to_stack (uint8_t val, void **esp)
   return true;
 }
 
-/* Push a word of data onto the stack.
-  In the meantime, check the esp is between USER_STACK_VADDR and PHYS_BASE or not
- */
+/* Push a word of data onto the stack. */
 static bool
 push_word_to_stack (uint32_t val, void **esp)
 {
