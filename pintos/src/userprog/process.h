@@ -9,10 +9,14 @@ int process_wait (tid_t);
 void process_exit (void);
 void process_activate (void);
 
-/* For specify the size of arguments string array */
-#define ARGS_SIZE 1024 
-/* For specify how many arguments variable can the process has*/
-#define ARGV_SIZE 256 
+/* Definitions of sizes in argument page for args and argv. */
+#define ARGS_SIZE PGSIZE / 2
+#define ARGV_SIZE (PGSIZE - ARGS_SIZE - sizeof (unsigned)) / sizeof (char *)
+
+// For specify the size of arguments string array 
+// #define ARGS_SIZE 1024 
+// For specify how many arguments variable can the process has
+// #define ARGV_SIZE 256 
 /* For arguments delimter*/
 #define ARGS_DELI " "
 /* The size of a word. */

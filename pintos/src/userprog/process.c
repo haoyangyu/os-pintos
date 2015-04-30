@@ -22,7 +22,7 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp);
-static struct lock unilock;
+//static struct lock unilock;
 //For argument parsing
 static void argument_tokenize (struct args_struct *args_struct_ptr);
 //Utility function for pushing args into stack
@@ -30,6 +30,9 @@ static bool push_byte_to_stack (uint8_t val, void **esp);
 static bool push_word_to_stack (uint32_t val, void **esp);
 //Have a function for pushing args into stack 
 static bool push_args_to_stack (struct args_struct *args_struct_ptr, void **esp);
+//Set the USER_STACK_VADDR as the address of the baseline address of the valid stack
+//Set it as a constant, in running procedure, use USER_STACK_VADDR to make sure does not have stackoverflow
+const uint8_t *USER_STACK_VADDR = (uint8_t *) PHYS_BASE - PGSIZE;
 
 
 /* Starts a new thread running a user program loaded from
@@ -37,7 +40,7 @@ static bool push_args_to_stack (struct args_struct *args_struct_ptr, void **esp)
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
 tid_t
-process_execute (const char *args) 
+process_execute (const char *arguments) 
 {
   struct args_struct *args_struct_ptr;
   tid_t tid;
@@ -47,7 +50,7 @@ process_execute (const char *args)
   args_struct_ptr = palloc_get_page (0);
   if (args_struct_ptr == NULL)
     return TID_ERROR;
-  strlcpy (args_struct_ptr-> args, args, PGSIZE);
+  strlcpy (args_struct_ptr-> args, arguments, ARGS_SIZE);
 
   //Use argument_tokenize to parse the arguments
   argument_tokenize(args_struct_ptr);
@@ -56,10 +59,10 @@ process_execute (const char *args)
   }
 
   //Need to make the execution in order, because the new thread may be scheduled before this funciton returns.
-  lock_acquire(&unilock);
+  //lock_acquire(&unilock);
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (args_struct_ptr->argv[0], PRI_DEFAULT, start_process, args_struct_ptr);
-  lock_release(&unilock);
+  //lock_release(&unilock);
   
   if (tid == TID_ERROR)
     palloc_free_page (args_struct_ptr); 
@@ -501,54 +504,60 @@ static bool
 setup_stack (struct args_struct *args_struct_ptr,void **esp) 
 {
   uint8_t *kpage;
-  bool success = false;
-  /*
+  bool success_for_stack_page_allocation = false;
+  bool success_for_setup_stack = false;
+  
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL){
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success){
+      success_for_stack_page_allocation = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
+      if (success_for_stack_page_allocation){
         *esp = PHYS_BASE;
-        push_args_to_stack(args_struct_ptr, esp);
-      }
-      else{
+        //If the minimal stack created successfully
+        success_for_setup_stack=push_args_to_stack(args_struct_ptr, esp);
+      }else{
         palloc_free_page (kpage);
       } 
-    }*/
-  *esp = PHYS_BASE;
-  success=push_args_to_stack(args_struct_ptr, esp);
-  return success;
+    }
+   return (success_for_stack_page_allocation && success_for_setup_stack);
 }
 
 //Push the arguments into stack
 static bool 
 push_args_to_stack (struct args_struct *args_struct_ptr, void **esp){
+  //Return the value in args_struct
   unsigned argc_value = args_struct_ptr -> argc;
   char ** arg_variable = args_struct_ptr -> argv;
 
 //For old C declaration
   int i;
   int j;
+  size_t length;
 
   //Place arguments into the stack
   //Reverse access the arguments stored in argv
   for (i = argc_value - 1; i >= 0; --i){
     //Get length of each argument
-      size_t length = strlen (arg_variable[i]);
+      length = strlen (arg_variable[i]);
       for (j = length; j >= 0; j--){
-        push_byte_to_stack ((uint8_t) arg_variable[i][j], esp);
+        //Check the esp is between USER_STACK_VADDR and PHYS_BASE or not
+        if (!push_byte_to_stack ((uint8_t) arg_variable[i][j], esp))
+          return false;
       }
       //Update the each argument starting address
       arg_variable[i] = *esp;
     }
 
   //Word-align esp.
-  for (i = (uintptr_t) *esp % sizeof (uint32_t); i > 0; i--){
-    push_byte_to_stack (NULL, esp);
+  for (i = (uintptr_t) *esp % sizeof (uint32_t); i > 0; --i){
+    //Check the esp is between USER_STACK_VADDR and PHYS_BASE or not
+    if (!push_byte_to_stack (NULL, esp))
+      return false;
   }
 
   //Place the pointers to arguments into the stack 
   for (i = argc_value - 1; i >= 0; --i){
-    push_word_to_stack ((uint32_t) arg_variable[i], esp);
+    if (!push_word_to_stack ((uint32_t) arg_variable[i], esp))
+      return false;
   }
   arg_variable = *esp;
 
@@ -558,11 +567,15 @@ push_args_to_stack (struct args_struct *args_struct_ptr, void **esp){
          && push_word_to_stack (NULL, esp);
 
 }
-/* Push a byte of data onto the stack. */
+/* Push a byte of data onto the stack. 
+  In the meantime, check the esp is between USER_STACK_VADDR and PHYS_BASE or not 
+*/
 static bool
 push_byte_to_stack (uint8_t val, void **esp)
 {
   *esp -= sizeof(uint8_t);
+  if (*esp<USER_STACK_VADDR)
+    return false;
   *((uint8_t *) (*esp)) = val;
   return true;
 }
@@ -572,6 +585,8 @@ static bool
 push_word_to_stack (uint32_t val, void **esp)
 {
   *esp -= sizeof(uint32_t);
+  if (*esp<USER_STACK_VADDR)
+    return false;
   *((uint32_t *) (*esp)) = val;
   return true;
 }
