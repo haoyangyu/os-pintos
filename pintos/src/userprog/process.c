@@ -22,7 +22,8 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp);
-static struct lock unilock;
+
+struct lock unilock;
 //For argument parsing
 static void argument_tokenize (struct args_struct *args_struct_ptr);
 //Utility function for pushing args into stack
@@ -42,10 +43,11 @@ struct lock filesys_lock;
 tid_t
 process_execute (const char *arguments) 
 {
-  lock_init(&unilock);
+  //lock_init(&unilock);
   struct args_struct *args_struct_ptr;
-  tid_t tid;
-  printf("process_execute_begin!\n");
+  tid_t tid = TID_ERROR;
+  printf("execute!\n");
+
   /* Make a copy of args.
      Otherwise there's a race between the caller and load(). */
   args_struct_ptr = palloc_get_page (0);
@@ -60,10 +62,16 @@ process_execute (const char *arguments)
     palloc_free_page (args_struct_ptr);
     return TID_ERROR;
   }
-
+  printf("before thread create!\n");
   //Need to make the execution in order, because the new thread may be scheduled before this funciton returns.
   lock_acquire(&unilock);
   /* Create a new thread to execute FILE_NAME. */
+  printf("%s\n",args_struct_ptr->argv[0]);
+  struct file *file = filesys_open(args_struct_ptr->argv[0]);
+  if (file == NULL)
+    printf("no such file!\n");
+  else
+    printf("find the file!!!!\n");
   tid = thread_create (args_struct_ptr->argv[0], PRI_DEFAULT, start_process, args_struct_ptr);
   lock_release(&unilock);
   
@@ -79,7 +87,9 @@ process_execute (const char *arguments)
 static void
 start_process (void *arguments_)
 {
+
   struct args_struct * args_struct_ptr = (struct args_struct *) arguments_;
+
   struct intr_frame if_;
   bool success = false;
   
@@ -277,12 +287,15 @@ load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp)
 
   //Get file name
   char *file_name = args_struct_ptr->argv[0];
-  printf("file_name_we_got: %s\n", file_name);
+
+  printf("file name: %s\n",file_name);
+
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
     return success;
   process_activate ();
+
   printf("before open executable file!\n");
   /* Open executable file. */
   lock_acquire (&filesys_lock);
