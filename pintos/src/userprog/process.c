@@ -43,10 +43,10 @@ struct lock filesys_lock;
 tid_t
 process_execute (const char *arguments) 
 {
-  //lock_init(&unilock);
+  lock_init(&unilock);
   struct args_struct *args_struct_ptr;
   tid_t tid = TID_ERROR;
-  //printf("execute!\n");
+  printf("in process_execute section!\n");
   /* Make a copy of args.
      Otherwise there's a race between the caller and load(). */
   args_struct_ptr = palloc_get_page (0);
@@ -62,19 +62,20 @@ process_execute (const char *arguments)
   }
  // printf("before thread create!\n");
   //Need to make the execution in order, because the new thread may be scheduled before this funciton returns.
-  //lock_acquire(&unilock);
+  lock_acquire(&unilock);
   /* Create a new thread to execute FILE_NAME. */
- // printf("%s\n",args_struct_ptr->argv[0]);
-  struct file *file = filesys_open(args_struct_ptr->argv[0]);
- // if (file == NULL)
- //   printf("no such file!\n");
- // else
-  //  printf("find the file!!!!\n");
-  tid = thread_create (args_struct_ptr->argv[0], PRI_DEFAULT, start_process, args_struct_ptr);
-  //lock_release(&unilock);
-  
+   char *temp_file_name;
+   temp_file_name = args_struct_ptr->argv[0];
+   tid=thread_create(temp_file_name, PRI_DEFAULT, start_process, args_struct_ptr);
+  // struct file *file = filesys_open(temp_file_name);
+  // // if (file == NULL)
+  //   printf("no such file!\n");
+  // else
+  //   printf("find the file!!!!\n");
+  lock_release(&unilock);
   if (tid == TID_ERROR)
     palloc_free_page (args_struct_ptr); 
+  //printf("%s\n", tid);
   return tid;
 }
 
@@ -83,7 +84,7 @@ process_execute (const char *arguments)
 static void
 start_process (void *args_)
 {
-  //printf("start!!\n");
+  printf("in start_process sections\n");
   struct args_struct * args_struct_ptr = (struct args_struct *) args_;
   struct intr_frame if_;
   bool success = false;
@@ -271,17 +272,17 @@ bool
 load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp) 
 {
   lock_init(&filesys_lock);
-  printf("load!!\n");
+ // printf("load!!\n");
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
   struct file *file = NULL;
   off_t file_ofs;
   bool success = false;
   int i;
-
+  printf("Load section in\n");
   //Get file name
   char *file_name = args_struct_ptr->argv[0];
- // printf("file name: %s\n",file_name);
+  printf("file name: %s\n",file_name);
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
@@ -295,7 +296,7 @@ load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp)
   //printf("filesys_open succeed!\n");
   if (file == NULL) 
     {
-      printf ("load: %s: open failed\n", file_name);
+      //printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
   // printf("before read and verify exeutable headers!\n");
@@ -444,17 +445,15 @@ static void argument_tokenize (struct args_struct *args_struct_ptr){
   unsigned argc_value=0;
   char ** arg_variable = args_struct_ptr->argv;
   for (token = strtok_r(args_struct_ptr->args,ARGS_DELI, &save_ptr); token != NULL; token = strtok_r (NULL, ARGS_DELI, &save_ptr)){
-     printf("%s\n",token);
     //Check the count of the arguments cannot equal or larger than the THRESHOLD of the argument variables size
     //Return the argc_value to -1
     if(argc_value==ARGV_SIZE){
-      printf("Enter too many arguments\n");
+      //printf("Enter too many arguments\n");
       argc_value = BAD_ARGS;
       break;
     }
     arg_variable[argc_value++]=token;
-   
-    
+    //printf("%s\n", token);
   }
   printf("%d\n",argc_value);
   //Return the argc with the arguments number, or -1 if the arguments are too many 
@@ -528,6 +527,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (struct args_struct *args_struct_ptr,void **esp) 
 {
+  printf("in setup_stack section\n");
   uint8_t *kpage;
   bool success_for_stack_page_allocation = false;
   bool success_for_setup_stack = false;
@@ -543,7 +543,8 @@ setup_stack (struct args_struct *args_struct_ptr,void **esp)
         palloc_free_page (kpage);
       } 
     }
-   return (success_for_stack_page_allocation && success_for_setup_stack);
+    hex_dump(*esp, *esp, (int) ((size_t) PHYS_BASE - (size_t) *esp), true);
+  return (success_for_stack_page_allocation && success_for_setup_stack);
 }
 
 //Push the arguments into stack
