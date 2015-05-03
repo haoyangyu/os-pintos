@@ -46,7 +46,6 @@ process_execute (const char *arguments)
   lock_init(&unilock);
   struct args_struct *args_struct_ptr;
   tid_t tid = TID_ERROR;
-  printf("in process_execute section!\n");
   /* Make a copy of args.
      Otherwise there's a race between the caller and load(). */
   args_struct_ptr = palloc_get_page (0);
@@ -60,7 +59,6 @@ process_execute (const char *arguments)
     palloc_free_page (args_struct_ptr);
     return TID_ERROR;
   }
- // printf("before thread create!\n");
   //Need to make the execution in order, because the new thread may be scheduled before this funciton returns.
   lock_acquire(&unilock);
   /* Create a new thread to execute FILE_NAME. */
@@ -84,7 +82,6 @@ process_execute (const char *arguments)
 static void
 start_process (void *args_)
 {
-  printf("in start_process sections\n");
   struct args_struct * args_struct_ptr = (struct args_struct *) args_;
   struct intr_frame if_;
   bool success = false;
@@ -279,10 +276,8 @@ load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp)
   off_t file_ofs;
   bool success = false;
   int i;
-  printf("Load section in\n");
   //Get file name
   char *file_name = args_struct_ptr->argv[0];
-  printf("file name: %s\n",file_name);
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
@@ -297,7 +292,8 @@ load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp)
   if (file == NULL) 
     {
       //printf ("load: %s: open failed\n", file_name);
-      goto done; 
+      //goto done;
+      return success; 
     }
   // printf("before read and verify exeutable headers!\n");
   /* Read and verify executable header. */
@@ -310,7 +306,8 @@ load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp)
       || ehdr.e_phnum > 1024) 
     {
       printf ("load: %s: error loading executable\n", file_name);
-      goto done; 
+      //goto done; 
+      return success;
     }
  // printf("before read program headers!\n");
   /* Read program headers. */
@@ -320,11 +317,13 @@ load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp)
       struct Elf32_Phdr phdr;
 
       if (file_ofs < 0 || file_ofs > file_length (file))
-        goto done;
+        //goto done;
+        return success;
       file_seek (file, file_ofs);
 
       if (file_read (file, &phdr, sizeof phdr) != sizeof phdr)
-        goto done;
+        //goto done;
+        return success;
       file_ofs += sizeof phdr;
       switch (phdr.p_type) 
         {
@@ -338,7 +337,8 @@ load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp)
         case PT_DYNAMIC:
         case PT_INTERP:
         case PT_SHLIB:
-          goto done;
+          //goto done;
+          return success;
         case PT_LOAD:
           if (validate_segment (&phdr, file)) 
             {
@@ -364,29 +364,32 @@ load (struct args_struct *args_struct_ptr, void (**eip) (void), void **esp)
                 }
               if (!load_segment (file, file_page, (void *) mem_page,
                                  read_bytes, zero_bytes, writable))
-                goto done;
+                //goto done;
+
+                return success;
             }
           else
-            goto done;
+            //goto done;
+            return success;
           break;
         }
     }
   //printf("Before setup stack!!\n");
   /* Set up stack. */
   if (!setup_stack (args_struct_ptr,esp))
-    goto done;
-
+    //goto done;
+    return success;
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
 
   success = true;
-
+  return success;
  done:
   /* We arrive here whether the load is successful or not. */
   file_close (file);
   lock_release (&filesys_lock);
  // printf("load complete!\n");
-  return success;
+  
 }
 
 /* load() helpers. */
@@ -455,7 +458,7 @@ static void argument_tokenize (struct args_struct *args_struct_ptr){
     arg_variable[argc_value++]=token;
     //printf("%s\n", token);
   }
-  printf("%d\n",argc_value);
+ // printf("%d\n",argc_value);
   //Return the argc with the arguments number, or -1 if the arguments are too many 
   args_struct_ptr->argc = argc_value;
   
@@ -527,7 +530,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (struct args_struct *args_struct_ptr,void **esp) 
 {
-  printf("in setup_stack section\n");
   uint8_t *kpage;
   bool success_for_stack_page_allocation = false;
   bool success_for_setup_stack = false;
@@ -580,6 +582,10 @@ push_args_to_stack (struct args_struct *args_struct_ptr, void **esp){
       return false;
   }
 
+  if (!push_word_to_stack(NULL, esp)){
+      return false;
+  }
+
   //Place the pointers to arguments into the stack 
   for (i = argc_value - 1; i >= 0; --i){
     if (!push_word_to_stack ((uint32_t) arg_variable[i], esp))
@@ -611,7 +617,7 @@ static bool
 push_word_to_stack (uint32_t val, void **esp)
 {
   *esp -= sizeof(uint32_t);
-  if (*esp<USER_STACK_VADDR)
+  if (*esp < USER_STACK_VADDR)
     return false;
   *((uint32_t *) (*esp)) = val;
   return true;
